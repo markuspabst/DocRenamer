@@ -9,6 +9,7 @@ private let pdfPointsPerInch: CGFloat = 72
 private let ocrDpi: CGFloat = 300
 private let invoiceTypeName = "Rechnung"  // Only this type gets an article in the name.
 private let ocrLanguages = ["de-DE", "en-US"]
+private let promptExampleLimit = 3  // Few-shot examples per model call; the on-device context is small.
 
 private enum RenamerError: LocalizedError {
     case notPDF(String)
@@ -187,6 +188,58 @@ private func resolveArticle(in text: String, fileName: String) -> String? {
            suggestion: ArticleGuesser.guess(from: text))
 }
 
+/// A rule-matched type is trusted. Otherwise the model's suggestion (or none)
+/// is confirmed in a dialog; an answer not yet known is registered as a type,
+/// with a keyword if it occurs in the text. Cancel keeps the suggestion.
+private func resolveType(
+    ruleType: String?, suggestion: String?, in text: String, fileName: String, rules: inout Rules
+) -> String? {
+    if let ruleType { return ruleType }
+
+    let known = rules.knownTypeName(suggestion)
+    guard let answer = prompt("Typ für \(fileName) bestätigen oder ändern (leer = unknown):", suggestion: known) else {
+        return known
+    }
+
+    let keyword = RuleMatcher.contains(text, keyword: answer) ? answer : nil
+    let updated = rules.addingType(answer, keyword: keyword)
+    if updated != rules {
+        rules = updated
+        do {
+            try saveRules(rules)
+        } catch {
+            FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
+        }
+    }
+    return rules.knownTypeName(answer)
+}
+
+/// A date found in the text is trusted. Otherwise the model's date or the file
+/// creation date is confirmed in a dialog. Unparsable input keeps the proposal.
+private func resolveDate(textDate: DocumentDate?, proposal: DocumentDate, fileName: String) -> DocumentDate {
+    if let textDate { return textDate }
+
+    guard let answer = prompt("Datum für \(fileName) bestätigen oder ändern (tt.mm.jjjj):", suggestion: proposal.formatted)
+    else { return proposal }
+
+    guard let parsed = DateExtractor.extract(from: answer) else {
+        FileHandle.standardError.write(Data("Unrecognized date \"\(answer)\"; using \(proposal.formatted).\n".utf8))
+        return proposal
+    }
+    return parsed
+}
+
+/// Logs the final result so later runs can show it to the model as an example.
+/// A logging failure must not block renaming.
+private func record(text: String, sender: String?, type: String?, date: DocumentDate) {
+    let example = Example(excerpt: Example.excerpt(of: text), sender: sender, type: type, date: date.formatted)
+    do {
+        try ExampleLog.append(example)
+    } catch {
+        FileHandle.standardError.write(Data("Could not log example: \(error)\n".utf8))
+    }
+}
+
 private func rename(path: String, rules: inout Rules) throws -> String {
     let source = URL(fileURLWithPath: path)
     guard source.pathExtension.lowercased() == "pdf" else { throw RenamerError.notPDF(path) }
@@ -200,17 +253,29 @@ private func rename(path: String, rules: inout Rules) throws -> String {
     // Rules and text heuristics win; the model only fills what they leave open.
     let needsModel = ruleType == nil || textDate == nil || !hasSenderRule
     let suggestion = needsModel
-        ? LLMExtractor.extract(from: text, allowedTypes: rules.types.map(\.name))
+        ? LLMExtractor.extract(
+            from: text,
+            allowedTypes: rules.types.map(\.name),
+            examples: ExampleSelector.mostSimilar(
+                to: Example.excerpt(of: text), in: ExampleLog.load(), limit: promptExampleLimit))
         : nil
 
     let sender = resolveSender(
         in: text, fileName: source.lastPathComponent, suggestion: suggestion?.sender, rules: &rules)
-    let type = ruleType ?? rules.knownTypeName(suggestion?.type)
+    let type = resolveType(
+        ruleType: ruleType, suggestion: suggestion?.type, in: text,
+        fileName: source.lastPathComponent, rules: &rules)
     let isInvoice = type?.lowercased() == invoiceTypeName.lowercased()
 
     let modelDate = suggestion?.date.flatMap(DateExtractor.extract(from:))
+    let date = resolveDate(
+        textDate: textDate,
+        proposal: modelDate ?? creationDate(of: source),
+        fileName: source.lastPathComponent)
+    record(text: text, sender: sender, type: type, date: date)
+
     let name = NameBuilder.fileName(
-        date: textDate ?? modelDate ?? creationDate(of: source),
+        date: date,
         sender: sender,
         type: type,
         article: isInvoice ? resolveArticle(in: text, fileName: source.lastPathComponent) : nil

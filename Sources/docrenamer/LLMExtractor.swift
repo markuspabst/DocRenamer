@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import DocRenamerCore
 
 /// Raw, unvalidated fields suggested by the on-device language model.
 struct LLMSuggestion {
@@ -20,7 +21,7 @@ enum LLMExtractor {
         """
 
     /// Returns nil when the model is unavailable or fails; the reason goes to stderr.
-    static func extract(from text: String, allowedTypes: [String]) -> LLMSuggestion? {
+    static func extract(from text: String, allowedTypes: [String], examples: [Example]) -> LLMSuggestion? {
         guard #available(macOS 26.0, *) else { return nil }
         guard SystemLanguageModel.default.isAvailable else {
             warn("On-device model unavailable: \(SystemLanguageModel.default.availability)")
@@ -31,7 +32,7 @@ enum LLMExtractor {
         let done = DispatchSemaphore(value: 0)
         Task {
             do {
-                result.value = try await respond(to: text, allowedTypes: allowedTypes)
+                result.value = try await respond(to: text, allowedTypes: allowedTypes, examples: examples)
             } catch {
                 warn("On-device extraction failed: \(error)")
             }
@@ -42,16 +43,32 @@ enum LLMExtractor {
     }
 
     @available(macOS 26.0, *)
-    private static func respond(to text: String, allowedTypes: [String]) async throws -> LLMSuggestion {
+    private static func respond(
+        to text: String, allowedTypes: [String], examples: [Example]
+    ) async throws -> LLMSuggestion {
         let session = LanguageModelSession(instructions: instructions)
         let prompt = """
             Allowed document types: \(allowedTypes.joined(separator: ", ")).
+            \(exampleBlock(for: examples))
 
             Document text:
             \(text.prefix(maxTextCharacters))
             """
         let fields = try await session.respond(to: prompt, generating: ExtractedFields.self).content
         return LLMSuggestion(sender: fields.sender, type: fields.type, date: fields.date)
+    }
+
+    /// Past confirmed results as few-shot examples; empty string when there are none.
+    private static func exampleBlock(for examples: [Example]) -> String {
+        guard !examples.isEmpty else { return "" }
+
+        let entries = examples.map { example in
+            """
+            Text: \(example.excerpt)
+            sender: \(example.sender ?? ""), type: \(example.type ?? ""), date: \(example.date ?? "")
+            """
+        }
+        return "\nConfirmed examples from this user:\n" + entries.joined(separator: "\n\n") + "\n"
     }
 
     private static func warn(_ message: String) {

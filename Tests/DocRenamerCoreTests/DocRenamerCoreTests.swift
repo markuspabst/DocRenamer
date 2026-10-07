@@ -214,3 +214,58 @@ final class NameBuilderArticleTests: XCTestCase {
                        "2026-01-02_a_b.pdf")
     }
 }
+
+final class AddingTypeTests: XCTestCase {
+    private let rules = Rules(senders: [], types: [Rule(name: "Rechnung", keywords: ["rechnung"])])
+
+    func testAddsNewTypeWithKeyword() {
+        let updated = rules.addingType("Mahnung", keyword: "mahnung")
+        XCTAssertEqual(updated.types.last, Rule(name: "Mahnung", keywords: ["mahnung"]))
+    }
+
+    func testAddsNewTypeWithoutKeyword() {
+        let updated = rules.addingType("Mahnung", keyword: nil)
+        XCTAssertEqual(updated.types.last, Rule(name: "Mahnung", keywords: []))
+    }
+
+    func testExtendsExistingTypeCaseInsensitive() {
+        let updated = rules.addingType("RECHNUNG", keyword: "abrechnung")
+        XCTAssertEqual(updated.types, [Rule(name: "Rechnung", keywords: ["rechnung", "abrechnung"])])
+    }
+
+    func testExistingTypeWithoutKeywordIsUnchanged() {
+        XCTAssertEqual(rules.addingType("Rechnung", keyword: nil), rules)
+    }
+}
+
+final class ExampleSelectorTests: XCTestCase {
+    private let telekom = Example(excerpt: "Telekom Deutschland Mobilfunk Anschluss Bonn", sender: "Telekom", type: "Kuendigung", date: "2024-03-12")
+    private let allianz = Example(excerpt: "Allianz Versicherung Police Beitrag München", sender: "Allianz", type: "Vertrag", date: nil)
+
+    func testPicksMostSimilarFirst() {
+        let result = ExampleSelector.mostSimilar(
+            to: "Telekom Mobilfunk Anschluss wird abgeschaltet", in: [allianz, telekom], limit: 2)
+        XCTAssertEqual(result.first, telekom)
+    }
+
+    func testDropsExamplesWithoutOverlap() {
+        let result = ExampleSelector.mostSimilar(to: "Zahnarzt Praxis", in: [allianz, telekom], limit: 2)
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    func testRespectsLimit() {
+        let result = ExampleSelector.mostSimilar(
+            to: "Telekom Allianz Mobilfunk Police", in: [allianz, telekom], limit: 1)
+        XCTAssertEqual(result.count, 1)
+    }
+}
+
+final class ExampleExcerptTests: XCTestCase {
+    func testCollapsesWhitespace() {
+        XCTAssertEqual(Example.excerpt(of: "Telekom\n\n  GmbH\tBonn"), "Telekom GmbH Bonn")
+    }
+
+    func testTruncatesLongText() {
+        XCTAssertEqual(Example.excerpt(of: String(repeating: "a", count: 1000)).count, 400)
+    }
+}

@@ -8,6 +8,8 @@ Finder Quick Action that renames a PDF to `yyyy-mm-dd_sender_type.pdf`; invoices
 - Unknown type gives `unknown`. Without a rule match, a dialog shows the guessed sender; confirm or edit it. The result is saved as a sender rule (keywords: guess and entered name, as far as they occur in the document text). Cancel or empty input uses the unconfirmed guess (or `unknown`). Saving rewrites `rules.json` with normalized formatting.
 - Article (type `Rechnung` only): a dialog shows the first line item below the table header ("Beschreibung"/"Bezeichnung"/…); confirm, edit, or clear it to omit the article. Cancel or empty input omits it.
 - On-device model (Apple Foundation Models, macOS 26+, Apple Intelligence enabled): fills what rules and text heuristics leave open. It proposes the sender (dialog default), the type (only names from `rules.json` are accepted) and the date (only if no date is found in the text). Rules always win. Without the model, behavior is unchanged; text never leaves the machine.
+- Type and date confirmation: when no type rule matches, a dialog shows the model's type (or nothing); confirm, edit, or clear it (empty/cancel keeps the suggestion, or `unknown` if none). A new name is saved as a type, with a keyword if it occurs in the text. When no date is found in the text, a dialog shows the model's date or the file creation date (`tt.mm.jjjj` or `jjjj-mm-tt`).
+- Learning: every run appends the first 400 characters of the text and the final sender, type and date to `~/.config/docrenamer/examples.jsonl` (mode 0600; contains document text, keep private). The three most similar past entries are given to the model as examples. Delete the file to reset.
 - Existing files are never overwritten; a `-2`, `-3`, … suffix is added.
 
 ## Install

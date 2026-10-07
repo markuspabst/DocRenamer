@@ -24,18 +24,29 @@ public struct Rules: Codable, Equatable {
     /// Extends an existing sender (matched case-insensitively by name)
     /// instead of creating a duplicate.
     public func addingSender(_ name: String, keyword: String) -> Rules {
-        guard let index = senders.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) else {
-            return Rules(senders: senders + [Rule(name: name, keywords: [keyword])], types: types)
+        Rules(senders: Rules.adding(to: senders, name: name, keyword: keyword), types: types)
+    }
+
+    /// Like `addingSender`, for types. Without a keyword the type is only
+    /// registered by name, which makes it a valid answer for `knownTypeName`.
+    public func addingType(_ name: String, keyword: String?) -> Rules {
+        Rules(senders: senders, types: Rules.adding(to: types, name: name, keyword: keyword))
+    }
+
+    private static func adding(to rules: [Rule], name: String, keyword: String?) -> [Rule] {
+        let keywords = keyword.map { [$0] } ?? []
+        guard let index = rules.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) else {
+            return rules + [Rule(name: name, keywords: keywords)]
         }
 
-        let existing = senders[index]
-        guard !existing.keywords.contains(where: { $0.lowercased() == keyword.lowercased() }) else {
-            return self
-        }
+        let existing = rules[index]
+        guard let keyword,
+              !existing.keywords.contains(where: { $0.lowercased() == keyword.lowercased() })
+        else { return rules }
 
-        var updated = senders
+        var updated = rules
         updated[index] = Rule(name: existing.name, keywords: existing.keywords + [keyword])
-        return Rules(senders: updated, types: types)
+        return updated
     }
 
     /// Returns the configured type name equal to `name` (ignoring case and

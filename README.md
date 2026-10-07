@@ -7,6 +7,7 @@ Finder Quick Action that renames a PDF to `yyyy-mm-dd_sender_type.pdf`; invoices
 - Sender: the rule from `rules.json` whose keyword appears earliest in the text. Otherwise guessed from the return-address line ("Name - Street - 12345 City") or the company before the first legal form (GmbH, AG, KG, …).
 - Unknown type gives `unknown`. Without a rule match, a dialog shows the guessed sender; confirm or edit it. The result is saved as a sender rule (keywords: guess and entered name, as far as they occur in the document text). Cancel or empty input uses the unconfirmed guess (or `unknown`). Saving rewrites `rules.json` with normalized formatting.
 - Article (type `Rechnung` only): a dialog shows the first line item below the table header ("Beschreibung"/"Bezeichnung"/…); confirm, edit, or clear it to omit the article. Cancel or empty input omits it.
+- On-device model (Apple Foundation Models, macOS 26+, Apple Intelligence enabled): fills what rules and text heuristics leave open. It proposes the sender (dialog default), the type (only names from `rules.json` are accepted) and the date (only if no date is found in the text). Rules always win. Without the model, behavior is unchanged; text never leaves the machine.
 - Existing files are never overwritten; a `-2`, `-3`, … suffix is added.
 
 ## Install

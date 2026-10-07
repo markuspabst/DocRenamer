@@ -155,12 +155,13 @@ private func uniqueDestination(for name: String, in directory: URL, source: URL)
 /// the user confirm or change it in a dialog; the result is stored as a rule
 /// (keywords: guess and answer, as far as they occur in the text) so later
 /// documents of that sender match. Cancel falls back to the unconfirmed guess.
-private func resolveSender(in text: String, fileName: String, rules: inout Rules) -> String? {
+/// The guess is the model's suggestion if present, else the heuristic one.
+private func resolveSender(in text: String, fileName: String, suggestion: String?, rules: inout Rules) -> String? {
     if let sender = RuleMatcher.firstMatch(rules.senders, in: text) {
         return sender
     }
 
-    let guess = SenderGuesser.guess(from: text)
+    let guess = suggestion ?? SenderGuesser.guess(from: text)
     guard let answer = prompt("Absender für \(fileName) bestätigen oder ändern:", suggestion: guess) else { return guess }
 
     let keywords = [guess, answer].compactMap { $0 }.filter { RuleMatcher.contains(text, keyword: $0) }
@@ -192,12 +193,24 @@ private func rename(path: String, rules: inout Rules) throws -> String {
     guard let document = PDFDocument(url: source) else { throw RenamerError.unreadable(path) }
 
     let text = try extractText(from: document, path: path)
-    let sender = resolveSender(in: text, fileName: source.lastPathComponent, rules: &rules)
-    let type = RuleMatcher.firstMatch(rules.types, in: text)
+    let ruleType = RuleMatcher.firstMatch(rules.types, in: text)
+    let textDate = DateExtractor.extract(from: text)
+    let hasSenderRule = RuleMatcher.firstMatch(rules.senders, in: text) != nil
+
+    // Rules and text heuristics win; the model only fills what they leave open.
+    let needsModel = ruleType == nil || textDate == nil || !hasSenderRule
+    let suggestion = needsModel
+        ? LLMExtractor.extract(from: text, allowedTypes: rules.types.map(\.name))
+        : nil
+
+    let sender = resolveSender(
+        in: text, fileName: source.lastPathComponent, suggestion: suggestion?.sender, rules: &rules)
+    let type = ruleType ?? rules.knownTypeName(suggestion?.type)
     let isInvoice = type?.lowercased() == invoiceTypeName.lowercased()
 
+    let modelDate = suggestion?.date.flatMap(DateExtractor.extract(from:))
     let name = NameBuilder.fileName(
-        date: DateExtractor.extract(from: text) ?? creationDate(of: source),
+        date: textDate ?? modelDate ?? creationDate(of: source),
         sender: sender,
         type: type,
         article: isInvoice ? resolveArticle(in: text, fileName: source.lastPathComponent) : nil

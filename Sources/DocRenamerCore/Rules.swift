@@ -37,6 +37,15 @@ public struct Rules: Codable, Equatable {
         updated[index] = Rule(name: existing.name, keywords: existing.keywords + [keyword])
         return Rules(senders: updated, types: types)
     }
+
+    /// Returns the configured type name equal to `name` (ignoring case and
+    /// surrounding whitespace), or nil. Guards against invented types.
+    public func knownTypeName(_ name: String?) -> String? {
+        guard let name else { return nil }
+
+        let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return types.first { $0.name.lowercased() == wanted }?.name
+    }
 }
 
 public enum RuleMatcher {

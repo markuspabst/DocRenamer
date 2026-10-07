@@ -118,6 +118,17 @@ final class RulesTests: XCTestCase {
     func testDoesNotDuplicateKeyword() {
         XCTAssertEqual(rules.addingSender("Telekom", keyword: "Telekom"), rules)
     }
+
+    func testKnownTypeNameIsCanonicalized() {
+        let typed = Rules(senders: [], types: [Rule(name: "Rechnung", keywords: ["rechnung"])])
+        XCTAssertEqual(typed.knownTypeName("  rechnung "), "Rechnung")
+    }
+
+    func testUnknownTypeNameIsRejected() {
+        let typed = Rules(senders: [], types: [Rule(name: "Rechnung", keywords: ["rechnung"])])
+        XCTAssertNil(typed.knownTypeName("Mahnung"))
+        XCTAssertNil(typed.knownTypeName(nil))
+    }
 }
 
 final class SenderGuesserTests: XCTestCase {

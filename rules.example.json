@@ -1,0 +1,11 @@
+{
+  "senders": [
+    { "name": "Telekom", "keywords": ["telekom"] },
+    { "name": "Allianz", "keywords": ["allianz"] }
+  ],
+  "types": [
+    { "name": "Rechnung", "keywords": ["rechnung", "invoice"] },
+    { "name": "Vertrag", "keywords": ["vertrag", "contract"] },
+    { "name": "Kuendigung", "keywords": ["kündigung", "kuendigung"] }
+  ]
+}
